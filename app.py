@@ -604,4 +604,4 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.video("https://youtu.be/JLd09jmEAYA?si=im7WmYxWgIpGW0wd")
+st.video("https://youtu.be/gcgWa76-qpY?si=A7RDLRCSJd0fZst2")

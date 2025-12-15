@@ -25,27 +25,67 @@ def format_rupiah(x):
     return formatted
 
 def highlight_total(row):
-    # Cek apakah ada kolom yang berisi "TOTAL" (case-insensitive)
     if any(str(x).strip().upper() == "TOTAL" for x in row):
         return ["font-weight: bold; background-color: #D9EAD3; color: #1A5E20;"] * len(row)
     else:
         return [""] * len(row)
     
-def highlight_1st_2nd_vendor(row, columns):
+def highlight_bold(row):
+    if any(str(x).strip().upper() == "TOTAL" for x in row):
+        return ["font-weight: bold;"] * len(row)
+    else:
+        return [""] * len(row)
+    
+def highlight_rank_summary(row, num_cols):
+    styles = [""] * len(row)
+
+    # Ambil nilai numeric vendor
+    numeric_vals = row[num_cols]
+
+    # EXCLUDE nilai 0 (vendor tidak ikut tender)
+    numeric_vals = numeric_vals[numeric_vals != 0]
+
+    # Skip jika kosong / NaN semua
+    if numeric_vals.dropna().empty:
+        return styles
+
+    # Sort numeric values
+    sorted_vals = numeric_vals.sort_values()
+
+    # Determine 1st & 2nd rank
+    first_vendor = sorted_vals.index[0]
+    second_vendor = sorted_vals.index[1] if len(sorted_vals) > 1 else None
+
+    # Apply styles
+    for i, col in enumerate(row.index):
+        if col == first_vendor:
+            styles[i] = "background-color: #C6EFCE; color: #006100;"
+        elif second_vendor and col == second_vendor:
+            styles[i] = "background-color: #FFEB9C; color: #9C6500;"
+
+    return styles
+
+def highlight_1st_2nd(row, columns):
     styles = [""] * len(columns)
     first_vendor = row.get("1st Vendor")
     second_vendor = row.get("2nd Vendor")
 
     for i, col in enumerate(columns):
         if col == first_vendor:
-            # styles[i] = "background-color: #f8c8dc; color: #7a1f47;"
             styles[i] = "background-color: #C6EFCE; color: #006100;"
         elif col == second_vendor:
-            # styles[i] = "background-color: #d7c6f3; color: #402e72;"
             styles[i] = "background-color: #FFEB9C; color: #9C6500;"
     return styles
 
-st.subheader("🧑‍🏫 User Guide: UPL Comparison")
+st.markdown(
+    """
+    <div style="font-size:1.75rem; font-weight:700; margin-bottom:9px">
+        🧑‍🏫 User Guide: UPL Comparison
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 st.markdown(
     ":red-badge[Indosat] :orange-badge[Ooredoo] :green-badge[Hutchison]"
 )
@@ -409,6 +449,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+st.markdown(
+    """
+    <div style="text-align:left; margin-bottom: 8px">
+        <span style="background:#C6EFCE; padding:2px 8px; border-radius:6px; font-weight:600; font-size: 0.75rem; color: black">1st Lowest</span>
+        &nbsp;
+        <span style="background:#FFEB9C; padding:2px 8px; border-radius:6px; font-weight:600; font-size: 0.75rem; color: black">2nd Lowest</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 # DataFrame
 columns = ["Desc", "Category", "UoM", "Vendor A", "Vendor B", "Vendor C"]
 data = [
@@ -423,7 +474,8 @@ num_cols = ["Vendor A", "Vendor B", "Vendor C"]
 df_transpose_styled = (
     df_transpose.style
     .format({col: format_rupiah for col in num_cols})
-    .apply(highlight_total, axis=1)
+    .apply(highlight_bold, axis=1)
+    .apply(lambda row: highlight_rank_summary(row, num_cols), axis=1)
 )
 st.dataframe(df_transpose_styled, hide_index=True)
 
@@ -453,17 +505,24 @@ st.markdown(
 # DataFrame
 columns = ["Desc", "Category", "UoM", "Vendor A", "Vendor B", "Vendor C", "1st Lowest", "1st Vendor", "2nd Lowest", "2nd Vendor", "Gap 1 to 2 (%)", "Median Price", "Vendor A to Median (%)", "Vendor B to Median (%)", "Vendor C to Median (%)"]
 data = [
-    ["Cross connect", "Non-Services Area & Material", "Link", 30000, 30800, 29800, 29800, "Vendor C", 30000, "Vendor A", "0.7%", 30000, "+0.0%", "+2.7%", "-0.7%"],
-    ["Dismantle RAU", "Non-Services Area & Material", "Pcs", 247500, 247200, 274450, 247200, "Vendor B", 274450, "Vendor C", "0.1%", 274450, "+0.0%", "-0.1%", "+0.0%"],
-    ["Instalasi Optical Cable", "Non-Services Area & Material", "M", 3500, 3350, 3600, 3350, "Vendor B", 3500, "Vendor A", "4.5%", 3500, "+0.0%", "-4.3%", "+2.9%"],
+    ["Cross connect", "Non-Services Area & Material", "Link", 30000, 30800, 29800, 29800, "Vendor C", 30000, "Vendor A", 0.7, 30000, 0, 2.7, -0.7],
+    ["Dismantle RAU", "Non-Services Area & Material", "Pcs", 247500, 247200, 274450, 247200, "Vendor B", 274450, "Vendor C", 0.1, 274450, 0, -0.1, 0],
+    ["Instalasi Optical Cable", "Non-Services Area & Material", "M", 3500, 3350, 3600, 3350, "Vendor B", 3500, "Vendor A", 4.5, 3500, 0, -4.3, 2.9],
 ]
 df_analysis = pd.DataFrame(data, columns=columns)
 
 num_cols = ["Vendor A", "Vendor B", "Vendor C", "1st Lowest", "2nd Lowest", "Median Price"]
+format_dic = {col: format_rupiah for col in num_cols}
+format_dic.update({"Gap 1 to 2 (%)": "{:.1f}%"})
+
+vendor_cols = ["Vendor A", "Vendor B", "Vendor C"]
+for v in vendor_cols:
+    format_dic[f"{v} to Median (%)"] = "{:+.1f}%"
+
 df_analysis_styled = (
     df_analysis.style
-    .format({col: format_rupiah for col in num_cols})
-    .apply(lambda row: highlight_1st_2nd_vendor(row, df_analysis.columns), axis=1)
+    .format(format_dic)
+    .apply(lambda row: highlight_1st_2nd(row, df_analysis.columns), axis=1)
 )
 
 st.dataframe(df_analysis_styled, hide_index=True)
@@ -550,78 +609,123 @@ selected_sheets = st.multiselect(
 
 # Fungsi "Super Button" & Formatting
 def generate_multi_sheet_excel(selected_sheets, df_dict):
-    """
-    Buat Excel multi-sheet dengan highlight:
-    - Sheet 'Bid & Price Analysis' -> highlight 1st & 2nd vendor
-    - Sheet lainnya -> highlight row TOTAL
-    """
     output = BytesIO()
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         for sheet in selected_sheets:
-            df = df_dict[sheet].copy()
+            df = df_dict[sheet]
             df.to_excel(writer, index=False, sheet_name=sheet)
+
             workbook  = writer.book
             worksheet = writer.sheets[sheet]
 
-            # --- Format umum ---
-            fmt_rupiah = workbook.add_format({'num_format': '#,##0'})
-            fmt_pct    = workbook.add_format({'num_format': '#,##0.0"%"'})
-            fmt_total  = workbook.add_format({
-                "bold": True, "bg_color": "#D9EAD3", "font_color": "#1A5E20", "num_format": "#,##0"
+            # ===== FORMAT =====
+            fmt_rp   = workbook.add_format({'num_format': '#,##0'})
+            fmt_pct  = workbook.add_format({'num_format': '#,##0.0"%"'})
+            fmt_bold = workbook.add_format({'bold': True, 'num_format': '#,##0'})
+
+            fmt_total = workbook.add_format({
+                'bold': True,
+                'bg_color': '#D9EAD3',
+                'font_color': '#1A5E20',
+                'num_format': '#,##0'
             })
-            fmt_first  = workbook.add_format({'bg_color': '#C6EFCE', "num_format": "#,##0"})
-            fmt_second = workbook.add_format({'bg_color': '#FFEB9C', "num_format": "#,##0"})
 
-            # Identifikasi numeric columns
-            numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-            vendor_cols = [c for c in numeric_cols] if sheet == "Bid & Price Analysis" else []
+            fmt_1 = workbook.add_format({
+                'bg_color': '#C6EFCE',
+                'font_color': '#006100',
+                'num_format': '#,##0'
+            })
 
-            # Apply format kolom numeric / persen
-            for col_idx, col_name in enumerate(df.columns):
-                if col_name in numeric_cols:
-                    worksheet.set_column(col_idx, col_idx, 15, fmt_rupiah)
-                if "%" in col_name:
-                    worksheet.set_column(col_idx, col_idx, 15, fmt_pct)
+            fmt_2 = workbook.add_format({
+                'bg_color': '#FFEB9C',
+                'font_color': '#9C6500',
+                'num_format': '#,##0'
+            })
 
-            # --- Highlight baris ---
-            for row_idx, row in enumerate(df.itertuples(index=False), start=1):
-                # Cek apakah TOTAL
-                is_total_row = any(str(x).strip().upper() == "TOTAL" for x in row if pd.notna(x))
+            fmt_1b = workbook.add_format({
+                'bg_color': '#C6EFCE',
+                'font_color': '#006100',
+                'bold': True,
+                'num_format': '#,##0'
+            })
 
-                # Ambil nama 1st & 2nd vendor untuk sheet Bid & Price Analysis
+            fmt_2b = workbook.add_format({
+                'bg_color': '#FFEB9C',
+                'font_color': '#9C6500',
+                'bold': True,
+                'num_format': '#,##0'
+            })
+
+            num_cols = df.select_dtypes(include=["number"]).columns.tolist()
+            pct_cols = [c for c in df.columns if "%" in c]
+
+            # ===== LOOP DATA =====
+            for r, (_, row) in enumerate(df.iterrows(), start=1):
+                is_total = any(str(x).strip().upper() == "TOTAL" for x in row)
+
+                first = second = None
+
+                # ===== SUMMARY RANKING (EXCLUDE ZERO) =====
+                if sheet == "Transpose Data":
+                    numeric_vals = row[num_cols]
+                    numeric_vals = numeric_vals[
+                        (numeric_vals.notna()) & (numeric_vals != 0)
+                    ]
+
+                    if not numeric_vals.empty:
+                        sorted_vals = numeric_vals.sort_values()
+                        first = sorted_vals.index[0]
+                        if len(sorted_vals) > 1:
+                            second = sorted_vals.index[1]
+
+                # ===== BID & PRICE =====
                 if sheet == "Bid & Price Analysis":
-                    first_vendor_name = row[df.columns.get_loc("1st Vendor")]
-                    second_vendor_name = row[df.columns.get_loc("2nd Vendor")]
+                    first = row.get("1st Vendor")
+                    second = row.get("2nd Vendor")
 
-                    # Cari index kolom vendor di vendor_cols
-                    first_idx = df.columns.get_loc(first_vendor_name) if first_vendor_name in vendor_cols else None
-                    second_idx = df.columns.get_loc(second_vendor_name) if second_vendor_name in vendor_cols else None
+                for c, col in enumerate(df.columns):
+                    val = row[col]
 
-                # Loop tiap kolom
-                for col_idx, col_name in enumerate(df.columns):
-                    value = row[col_idx]
+                    # ===== SAFETY =====
+                    if pd.isna(val) or (isinstance(val, (int, float)) and np.isinf(val)):
+                        worksheet.write(r, c, "")
+                        continue
+
                     fmt = None
 
-                    # Highlight TOTAL untuk sheet selain Bid & Price Analysis
-                    if is_total_row and sheet in ["Merge Data", "Transpose Data"]:
+                    is_zero = isinstance(val, (int, float)) and val == 0
+                    # ===== NO HIGHLIGHT FOR ZERO (EXCEPT MERGE DATA) =====
+                    if is_zero and sheet != "Merge Data":
+                        fmt = None
+
+                    # ===== PICK FORMAT =====
+                    elif col == first:
+                        fmt = fmt_1b if is_total else fmt_1
+                    elif col == second:
+                        fmt = fmt_2b if is_total else fmt_2
+                    elif is_total and sheet == "Merge Data":
                         fmt = fmt_total
+                    elif is_total:
+                        fmt = fmt_bold
 
-                    # Highlight 1st/2nd vendor
-                    elif sheet == "Bid & Price Analysis":
-                        if first_idx is not None and col_idx == first_idx:
-                            fmt = fmt_first
-                        elif second_idx is not None and col_idx == second_idx:
-                            fmt = fmt_second
+                    # ===== WRITE CELL =====
+                    if col in pct_cols:
+                        worksheet.write_number(r, c, val, fmt or fmt_pct)
+                    elif col in num_cols:
+                        worksheet.write_number(r, c, val, fmt or fmt_rp)
+                    else:
+                        worksheet.write(r, c, val, fmt)
 
-                    # Tangani NaN / None / inf
-                    if pd.isna(value) or (isinstance(value, (int, float)) and np.isinf(value)):
-                        value = ""
-
-                    worksheet.write(row_idx, col_idx, value, fmt)
+                # ===== AUTOFIT =====
+                for i, col in enumerate(df.columns):
+                    worksheet.set_column(
+                        i, i,
+                        max(len(str(col)), df[col].astype(str).map(len).max()) + 2
+                    )
 
     output.seek(0)
-    return output
+    return output.getvalue()
 
 # ---- DOWNLOAD BUTTON ----
 if selected_sheets:
